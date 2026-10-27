@@ -1,0 +1,65 @@
+name: Crear servidor gratis en Oracle
+
+on:
+  schedule:
+    - cron: '5 * * * *'   # cada hora
+  workflow_dispatch:
+
+concurrency:
+  group: crear-servidor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+jobs:
+  intentar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar OCI CLI
+        run: pip install --quiet oci-cli
+
+      - name: Configurar credenciales
+        env:
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+        run: |
+          mkdir -p ~/.oci
+          printf '%s\n' "$OCI_PRIVATE_KEY" > ~/.oci/llave.pem
+          chmod 600 ~/.oci/llave.pem
+          {
+            echo "[DEFAULT]"
+            echo "user=$OCI_USER_OCID"
+            echo "fingerprint=$OCI_FINGERPRINT"
+            echo "tenancy=$OCI_TENANCY_OCID"
+            echo "region=$OCI_REGION"
+            echo "key_file=$HOME/.oci/llave.pem"
+          } > ~/.oci/config
+          chmod 600 ~/.oci/config
+
+      - name: Intentar crear el servidor
+        id: crear
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: 'True'
+        run: bash intentar.sh
+
+      - name: Avisar y detener los intentos
+        if: steps.crear.outputs.creado == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DETALLE: ${{ steps.crear.outputs.detalle }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Servidor de Oracle creado" \
+            --body "El servidor gratis ya existe en Oracle Cloud (Bogotá). ${DETALLE}. Míralo en Compute → Instances. Los intentos automáticos quedaron apagados."
+          gh workflow disable crear-servidor.yml --repo "$GITHUB_REPOSITORY"
