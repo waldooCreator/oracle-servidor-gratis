@@ -2,7 +2,7 @@ name: Crear servidor gratis en Oracle
 
 on:
   schedule:
-    - cron: '5 * * * *'   # cada hora
+    - cron: '5 * * * *'   # cada hora, por si se corta la cadena
   workflow_dispatch:
 
 concurrency:
@@ -63,3 +63,10 @@ jobs:
             --title "Servidor de Oracle creado" \
             --body "El servidor gratis ya existe en Oracle Cloud (Bogotá). ${DETALLE}. Míralo en Compute → Instances. Los intentos automáticos quedaron apagados."
           gh workflow disable crear-servidor.yml --repo "$GITHUB_REPOSITORY"
+
+      # El cron de GitHub se salta horas; cada vuelta sin éxito lanza la siguiente.
+      - name: Lanzar la siguiente vuelta
+        if: steps.crear.outcome == 'success' && steps.crear.outputs.creado != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run crear-servidor.yml --repo "$GITHUB_REPOSITORY" --ref main
